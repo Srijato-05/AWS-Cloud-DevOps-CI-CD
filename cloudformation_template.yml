@@ -92,7 +92,6 @@ Resources:
                   - codedeploy:CreateDeployment
                   - codedeploy:GetDeployment
                   - codedeploy:GetApplication
-                  # --- THIS IS THE FIXED LINE ---
                   - codedeploy:GetApplicationRevision
                   - codedeploy:GetDeploymentGroup
                   - codedeploy:GetDeploymentConfig
@@ -119,9 +118,18 @@ Resources:
       Tags:
         - Key: App
           Value: CuratorCompendium
+      # --- UPDATED UserData with OS Verification ---
       UserData:
         Fn::Base64: |
           #!/bin/bash
+          # --- OS VERIFICATION SCRIPT ---
+          # This script will intentionally fail if the OS is not Amazon Linux 2
+          if [ ! -f /etc/system-release ] || ! grep -q "Amazon Linux" /etc/system-release; then
+              echo "FATAL: This is NOT an Amazon Linux 2 instance. Aborting setup." >&2
+              exit 1
+          fi
+          # --- END VERIFICATION ---
+          
           yum update -y
           yum install -y httpd
           systemctl start httpd
