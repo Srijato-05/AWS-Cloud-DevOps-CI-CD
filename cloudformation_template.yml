@@ -1,0 +1,218 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates the FULL CI/CD Pipeline (Infra + Pipeline) for the Curator Compendium project.
+
+Parameters:
+  # You MUST provide these three values when you run the stack.
+  GitHubRepoName:
+    Type: String
+    Description: Your GitHub repository name (e.g., AWS-Cloud-DevOps-CI-CD).
+  GitHubBranchName:
+    Type: String
+    Default: main
+    Description: The branch to trigger the pipeline (e.g., main).
+  CodeStarConnectionArn:
+    Type: String
+    Description: The ARN of the AWS CodeStar Connection you created manually for GitHub.
+
+Resources:
+  # --- 1. IAM Roles ---
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement: [{Effect: Allow, Principal: {Service: [ec2.amazonaws.com]}, Action: [sts:AssumeRole]}]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref EC2InstanceRole]
+
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement: [{Effect: Allow, Principal: {Service: [codedeploy.amazonaws.com]}, Action: [sts:AssumeRole]}]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement: [{Effect: Allow, Principal: {Service: [codebuild.amazonaws.com]}, Action: [sts:AssumeRole]}]
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+                Resource: "*" # Note: Too permissive for prod, fine for assignment
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement: [{Effect: Allow, Principal: {Service: [codepipeline.amazonaws.com]}, Action: [sts:AssumeRole]}]
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                  - codebuild:StartBuild
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetApplication
+                  - codedeploy:GetDeploymentGroup
+                  - codedeploy:RegisterApplicationRevision
+                  - codestar-connections:UseConnection
+                Resource: "*" # Note: Too permissive for prod
+
+  # --- 2. Infrastructure ---
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow HTTP and SSH"
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: 0.0.0.0/0}
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-0cff7528ff583bf9a # Amazon Linux 2 AMI in us-east-1. Change if in another region.
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds: [!Ref WebServerSecurityGroup]
+      Tags:
+        - Key: App
+          Value: CuratorCompendium # This tag is used by CodeDeploy
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl start httpd
+          systemctl enable httpd
+          yum install -y ruby wget
+          cd /home/ec2-user
+          wget https://aws-codedeploy-us-east-1.s3.us-east-1.amazonaws.com/latest/install
+          chmod +x ./install
+          ./install auto
+          systemctl start codedeploy-agent
+          systemctl enable codedeploy-agent
+
+  # --- 3. CodeDeploy Application ---
+  CodeDeployApp:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: Compendium-App
+      ComputePlatform: Server
+
+  CodeDeployGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApp
+      DeploymentGroupName: Compendium-Prod-Fleet
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      Ec2TagFilters:
+        - Key: App
+          Value: CuratorCompendium # Finds the EC2 instance using this tag
+      DeploymentStyle:
+        DeploymentType: IN_PLACE
+        DeploymentOption: WITHOUT_TRAFFIC_CONTROL
+      AutoRollbackConfiguration:
+        Enabled: true
+        Events: [DEPLOYMENT_FAILURE]
+
+  # --- 4. CodeBuild Project ---
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: Compendium-BuildProject
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts: {Type: CODEPIPELINE}
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml # Tells Build to use our file from the repo root
+
+  # --- 5. The Pipeline Itself ---
+  ThePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: Curator-Compendium-Pipeline
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Sub "codepipeline-${AWS::Region}-${AWS::AccountId}" # Creates a new bucket
+      Stages:
+        # Stage 1: Source (from GitHub)
+        - Name: Source
+          Actions:
+            - Name: GitHub_Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref CodeStarConnectionArn # Uses the ARN you provide
+                FullRepositoryId: !Sub "${AWS::AccountId}/${GitHubRepoName}" # Placeholder, but correct format is YourGitHubUsername/RepoName
+                BranchName: !Ref GitHubBranchName
+              OutputArtifacts: [Name: SourceArtifact]
+              RunOrder: 1
+        # Stage 2: Build
+        - Name: Build
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts: [Name: SourceArtifact]
+              OutputArtifacts: [Name: BuildArtifact]
+              RunOrder: 1
+        # Stage 3: Deploy
+        - Name: Deploy
+          Actions:
+            - Name: CodeDeploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CodeDeploy
+                Version: '1'
+              Configuration:
+                ApplicationName: !Ref CodeDeployApp
+                DeploymentGroupName: !Ref CodeDeployGroup
+              InputArtifacts: [Name: BuildArtifact]
+              RunOrder: 1
+
+Outputs:
+  InstancePublicIp:
+    Description: Public IP of the web server
+    Value: !GetAtt EC2Instance.PublicIp

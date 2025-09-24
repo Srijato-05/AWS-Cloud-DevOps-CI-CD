@@ -1,0 +1,19 @@
+version: 0.0
+os: linux
+
+files:
+  # UPDATED: Paths now point inside the Website/ folder
+  - source: /Website/index.html
+    destination: /var/www/html
+  - source: /Website/style.css
+    destination: /var/www/html
+  
+  # This path is still correct
+  - source: /images
+    destination: /var/www/html
+
+hooks:
+  ApplicationStart:
+    - location: scripts/restart_server.sh
+      timeout: 300
+      runas: root
