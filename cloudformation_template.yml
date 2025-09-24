@@ -92,8 +92,9 @@ Resources:
                   - codedeploy:CreateDeployment
                   - codedeploy:GetDeployment
                   - codedeploy:GetApplication
-                  - codedeploy:GetDeploymentGroup
                   # --- THIS IS THE FIXED LINE ---
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeploymentGroup
                   - codedeploy:GetDeploymentConfig
                   - codedeploy:RegisterApplicationRevision
                   - codestar-connections:UseConnection
