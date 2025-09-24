@@ -2,18 +2,21 @@ version: 0.0
 os: linux
 
 files:
-  # UPDATED: Paths now point inside the Website/ folder
   - source: /Website/index.html
     destination: /var/www/html
   - source: /Website/style.css
     destination: /var/www/html
-  
-  # This path is still correct
   - source: /images
     destination: /var/www/html
 
 hooks:
+  # This hook runs before the new files are copied over
+  ApplicationStop:
+    - location: scripts/stop_server.sh
+      timeout: 300
+      runas: root
+  # This hook runs after the new files have been copied
   ApplicationStart:
-    - location: scripts/restart_server.sh
+    - location: scripts/start_server.sh
       timeout: 300
       runas: root
