@@ -112,30 +112,24 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
-      ImageId: ami-0f5ee92e2d63afc18
+      # --- UPDATED: Changed ImageId to an official Ubuntu 22.04 AMI for ap-south-1 ---
+      ImageId: ami-08e5424edfe926b43
       IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds: [!Ref WebServerSecurityGroup]
       Tags:
         - Key: App
           Value: CuratorCompendium
-      # --- UPDATED UserData with OS Verification ---
+      # --- UPDATED: UserData script is now for Ubuntu (apt-get, apache2) ---
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          # --- OS VERIFICATION SCRIPT ---
-          # This script will intentionally fail if the OS is not Amazon Linux 2
-          if [ ! -f /etc/system-release ] || ! grep -q "Amazon Linux" /etc/system-release; then
-              echo "FATAL: This is NOT an Amazon Linux 2 instance. Aborting setup." >&2
-              exit 1
-          fi
-          # --- END VERIFICATION ---
+          apt-get update -y
+          apt-get install -y apache2
+          systemctl start apache2
+          systemctl enable apache2
           
-          yum update -y
-          yum install -y httpd
-          systemctl start httpd
-          systemctl enable httpd
-          yum install -y ruby wget
-          cd /home/ec2-user
+          apt-get install -y ruby-full wget
+          cd /home/ubuntu
           wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
           chmod +x ./install
           ./install auto

@@ -1,9 +1,7 @@
 #!/bin/bash
-
-# This simple script checks if the Apache server (httpd) is active.
-# If it's not (like on the very first deploy), it starts it.
-
-systemctl is-active --quiet httpd
+# Start the Apache server if it's not already running.
+# The service is called 'apache2' on Ubuntu.
+systemctl is-active --quiet apache2
 if [ $? -ne 0 ]; then
-    systemctl start httpd
+    systemctl start apache2
 fi
