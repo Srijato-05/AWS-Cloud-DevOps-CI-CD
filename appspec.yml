@@ -10,6 +10,11 @@ files:
     destination: /var/www/html
 
 hooks:
+  # NEW: This hook runs before the 'Install' step
+  BeforeInstall:
+    - location: scripts/before_install.sh
+      timeout: 300
+      runas: root
   ApplicationStop:
     - location: scripts/stop_server.sh
       timeout: 300
@@ -18,7 +23,6 @@ hooks:
     - location: scripts/start_server.sh
       timeout: 300
       runas: root
-  # NEW: This hook runs after ApplicationStart to test the deployment
   ValidateService:
     - location: scripts/validate_service.sh
       timeout: 300
