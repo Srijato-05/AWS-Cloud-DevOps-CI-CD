@@ -1,13 +1,14 @@
 version: 0.2
 
 phases:
+  install:
+    commands:
+      - echo "Setting execute permissions on all scripts..."
+      - chmod +x scripts/*.sh
   build:
     commands:
-      - echo "No build steps needed for a static site."
-      - echo "Zipping all artifacts for CodeDeploy..."
+      - echo "No build steps needed. Zipping artifacts..."
 
 artifacts:
-  # This tells CodeBuild to grab EVERY file and folder
-  # and pass them to the CodeDeploy stage.
   files:
     - '**/*'
