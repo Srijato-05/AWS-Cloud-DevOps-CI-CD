@@ -1,1 +1,4 @@
 aws:codeconnections:ap-south-1:703671905922:connection/fc50b0a5-6000-4143-a697-e28da282ed2e
+Srijato-05/AWS-Cloud-DevOps-CI-CD
+
+aws cloudformation create-stack --stack-name "Curator-Pipeline-Stack" --template-body file://cloudformation_template.yml --parameters ParameterKey=GitHubRepoName,ParameterValue=Srijato-05/AWS-Cloud-DevOps-CI-CD ParameterKey=CodeStarConnectionArn,ParameterValue=arn:aws:codeconnections:ap-south-1:703671905922:connection/fc50b0a5-6000-4143-a697-e28da282ed2e --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM

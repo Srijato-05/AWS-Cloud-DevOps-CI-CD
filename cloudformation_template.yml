@@ -2,10 +2,9 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Creates the FULL CI/CD Pipeline (Infra + Pipeline) for the Curator Compendium project.
 
 Parameters:
-  # You MUST provide these three values when you run the stack.
   GitHubRepoName:
     Type: String
-    Description: Your GitHub repository name (e.g., AWS-Cloud-DevOps-CI-CD).
+    Description: Your GitHub repository name in format YourUsername/RepoName (e.g., Srijato-05/AWS-Cloud-DevOps-CI-CD).
   GitHubBranchName:
     Type: String
     Default: main
@@ -15,6 +14,17 @@ Parameters:
     Description: The ARN of the AWS CodeStar Connection you created manually for GitHub.
 
 Resources:
+  PipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
   # --- 1. IAM Roles ---
   EC2InstanceRole:
     Type: AWS::IAM::Role
@@ -61,7 +71,7 @@ Resources:
                   - s3:GetObjectVersion
                   - s3:GetBucketAcl
                   - s3:GetBucketLocation
-                Resource: "*" # Note: Too permissive for prod, fine for assignment
+                Resource: "*"
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
@@ -78,13 +88,16 @@ Resources:
                 Action:
                   - s3:*
                   - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
                   - codedeploy:CreateDeployment
                   - codedeploy:GetDeployment
                   - codedeploy:GetApplication
                   - codedeploy:GetDeploymentGroup
+                  # --- THIS IS THE FIXED LINE ---
+                  - codedeploy:GetDeploymentConfig
                   - codedeploy:RegisterApplicationRevision
                   - codestar-connections:UseConnection
-                Resource: "*" # Note: Too permissive for prod
+                Resource: "*"
 
   # --- 2. Infrastructure ---
   WebServerSecurityGroup:
@@ -99,12 +112,12 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
-      ImageId: ami-0cff7528ff583bf9a # Amazon Linux 2 AMI in us-east-1. Change if in another region.
+      ImageId: ami-0f5ee92e2d63afc18
       IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds: [!Ref WebServerSecurityGroup]
       Tags:
         - Key: App
-          Value: CuratorCompendium # This tag is used by CodeDeploy
+          Value: CuratorCompendium
       UserData:
         Fn::Base64: |
           #!/bin/bash
@@ -114,7 +127,7 @@ Resources:
           systemctl enable httpd
           yum install -y ruby wget
           cd /home/ec2-user
-          wget https://aws-codedeploy-us-east-1.s3.us-east-1.amazonaws.com/latest/install
+          wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
           chmod +x ./install
           ./install auto
           systemctl start codedeploy-agent
@@ -135,7 +148,8 @@ Resources:
       ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
       Ec2TagFilters:
         - Key: App
-          Value: CuratorCompendium # Finds the EC2 instance using this tag
+          Value: CuratorCompendium
+          Type: KEY_AND_VALUE
       DeploymentStyle:
         DeploymentType: IN_PLACE
         DeploymentOption: WITHOUT_TRAFFIC_CONTROL
@@ -156,7 +170,7 @@ Resources:
         Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
       Source:
         Type: CODEPIPELINE
-        BuildSpec: buildspec.yml # Tells Build to use our file from the repo root
+        BuildSpec: buildspec.yml
 
   # --- 5. The Pipeline Itself ---
   ThePipeline:
@@ -166,46 +180,31 @@ Resources:
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Type: S3
-        Location: !Sub "codepipeline-${AWS::Region}-${AWS::AccountId}" # Creates a new bucket
+        Location: !Ref PipelineArtifactBucket
       Stages:
-        # Stage 1: Source (from GitHub)
         - Name: Source
           Actions:
             - Name: GitHub_Source
-              ActionTypeId:
-                Category: Source
-                Owner: AWS
-                Provider: CodeStarSourceConnection
-                Version: '1'
+              ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeStarSourceConnection, Version: '1'}
               Configuration:
-                ConnectionArn: !Ref CodeStarConnectionArn # Uses the ARN you provide
-                FullRepositoryId: !Sub "${AWS::AccountId}/${GitHubRepoName}" # Placeholder, but correct format is YourGitHubUsername/RepoName
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Ref GitHubRepoName
                 BranchName: !Ref GitHubBranchName
               OutputArtifacts: [Name: SourceArtifact]
               RunOrder: 1
-        # Stage 2: Build
         - Name: Build
           Actions:
             - Name: CodeBuild
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: '1'
+              ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: '1'}
               Configuration:
                 ProjectName: !Ref CodeBuildProject
               InputArtifacts: [Name: SourceArtifact]
               OutputArtifacts: [Name: BuildArtifact]
               RunOrder: 1
-        # Stage 3: Deploy
         - Name: Deploy
           Actions:
             - Name: CodeDeploy
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: CodeDeploy
-                Version: '1'
+              ActionTypeId: {Category: Deploy, Owner: AWS, Provider: CodeDeploy, Version: '1'}
               Configuration:
                 ApplicationName: !Ref CodeDeployApp
                 DeploymentGroupName: !Ref CodeDeployGroup
