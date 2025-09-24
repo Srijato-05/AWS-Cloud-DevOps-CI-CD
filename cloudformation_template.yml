@@ -112,27 +112,39 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
-      # --- UPDATED: Changed ImageId to an official Ubuntu 22.04 AMI for ap-south-1 ---
       ImageId: ami-08e5424edfe926b43
       IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds: [!Ref WebServerSecurityGroup]
       Tags:
         - Key: App
           Value: CuratorCompendium
-      # --- UPDATED: UserData script is now for Ubuntu (apt-get, apache2) ---
+      # --- UPDATED: New, more robust UserData script for Ubuntu ---
       UserData:
         Fn::Base64: |
-          #!/bin/bash
+          #!/bin/bash -xe
+          # The '-xe' flags will make the script exit immediately if a command fails, and print each command as it runs.
+          
+          # Redirect all output to a log file for easier debugging
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+
+          # Make apt-get non-interactive
+          export DEBIAN_FRONTEND=noninteractive
+          
+          # Update and install software
           apt-get update -y
-          apt-get install -y apache2
+          apt-get install -y apache2 ruby-full wget
+          
+          # Start and enable Apache
           systemctl start apache2
           systemctl enable apache2
           
-          apt-get install -y ruby-full wget
+          # Install the CodeDeploy Agent
           cd /home/ubuntu
           wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
           chmod +x ./install
           ./install auto
+          
+          # Start and enable the CodeDeploy agent
           systemctl start codedeploy-agent
           systemctl enable codedeploy-agent
 
