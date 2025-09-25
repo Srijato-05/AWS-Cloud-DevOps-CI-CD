@@ -6,11 +6,11 @@ files:
     destination: /var/www/html
   - source: /Website/style.css
     destination: /var/www/html
+  # --- THIS IS THE FIXED LINE ---
   - source: /images
-    destination: /var/www/html
+    destination: /var/www/html/images
 
 hooks:
-  # NEW: This hook runs before the 'Install' step
   BeforeInstall:
     - location: scripts/before_install.sh
       timeout: 300
