@@ -1,17 +1,17 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Creates the FULL CI/CD Pipeline (Infra + Pipeline) for the Curator Compendium project.
+Description: Creates the FULL CI/CD Pipeline (Infra + S3-Triggered Pipeline) for the Curator Compendium project.
 
 Parameters:
+  GitHubUsername:
+    Type: String
+    Description: Your GitHub Username (e.g., Srijato-05).
   GitHubRepoName:
     Type: String
-    Description: Your GitHub repository name in format YourUsername/RepoName (e.g., Srijato-05/AWS-Cloud-DevOps-CI-CD).
+    Description: Your GitHub repository name (e.g., AWS-Cloud-DevOps-CI-CD).
   GitHubBranchName:
     Type: String
     Default: main
     Description: The branch to trigger the pipeline (e.g., main).
-  CodeStarConnectionArn:
-    Type: String
-    Description: The ARN of the AWS CodeStar Connection you created manually for GitHub.
 
 Resources:
   PipelineArtifactBucket:
@@ -96,7 +96,8 @@ Resources:
                   - codedeploy:GetDeploymentGroup
                   - codedeploy:GetDeploymentConfig
                   - codedeploy:RegisterApplicationRevision
-                  - codestar-connections:UseConnection
+                  # Add permission to read the secret
+                  - secretsmanager:GetSecretValue
                 Resource: "*"
 
   # --- 2. Infrastructure ---
@@ -112,39 +113,25 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
-      ImageId: ami-08e5424edfe926b43
+      ImageId: ami-08e5424edfe926b43 # Ubuntu 22.04 in ap-south-1
       IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds: [!Ref WebServerSecurityGroup]
       Tags:
         - Key: App
           Value: CuratorCompendium
-      # --- UPDATED: New, more robust UserData script for Ubuntu ---
       UserData:
         Fn::Base64: |
           #!/bin/bash -xe
-          # The '-xe' flags will make the script exit immediately if a command fails, and print each command as it runs.
-          
-          # Redirect all output to a log file for easier debugging
           exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
-
-          # Make apt-get non-interactive
           export DEBIAN_FRONTEND=noninteractive
-          
-          # Update and install software
           apt-get update -y
           apt-get install -y apache2 ruby-full wget
-          
-          # Start and enable Apache
           systemctl start apache2
           systemctl enable apache2
-          
-          # Install the CodeDeploy Agent
           cd /home/ubuntu
           wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
           chmod +x ./install
           ./install auto
-          
-          # Start and enable the CodeDeploy agent
           systemctl start codedeploy-agent
           systemctl enable codedeploy-agent
 
@@ -197,14 +184,19 @@ Resources:
         Type: S3
         Location: !Ref PipelineArtifactBucket
       Stages:
+        # --- UPDATED: Source stage is now GitHub v1 with Polling ---
         - Name: Source
           Actions:
             - Name: GitHub_Source
-              ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeStarSourceConnection, Version: '1'}
+              ActionTypeId: {Category: Source, Owner: ThirdParty, Provider: GitHub, Version: '1'}
               Configuration:
-                ConnectionArn: !Ref CodeStarConnectionArn
-                FullRepositoryId: !Ref GitHubRepoName
-                BranchName: !Ref GitHubBranchName
+                Owner: !Ref GitHubUsername
+                Repo: !Ref GitHubRepoName
+                Branch: !Ref GitHubBranchName
+                # Securely fetches your PAT from Secrets Manager
+                OAuthToken: "{{resolve:secrets-manager:GitHubToken:SecretString}}"
+                # This is the key: it checks for changes instead of using a webhook
+                PollForSourceChanges: true
               OutputArtifacts: [Name: SourceArtifact]
               RunOrder: 1
         - Name: Build
