@@ -1,17 +1,17 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Creates the FULL CI/CD Pipeline (Infra + S3-Triggered Pipeline) for the Curator Compendium project.
+Description: Creates the FULL CI/CD Pipeline (Infra + Pipeline) using a CodeStar Connection.
 
 Parameters:
-  GitHubUsername:
-    Type: String
-    Description: Your GitHub Username (e.g., Srijato-05).
   GitHubRepoName:
     Type: String
-    Description: Your GitHub repository name (e.g., AWS-Cloud-DevOps-CI-CD).
+    Description: Your GitHub repository name in format YourUsername/RepoName (e.g., Srijato-05/AWS-Cloud-DevOps-CI-CD).
   GitHubBranchName:
     Type: String
     Default: main
     Description: The branch to trigger the pipeline (e.g., main).
+  CodeStarConnectionArn:
+    Type: String
+    Description: The ARN of the AWS CodeStar Connection you create manually for GitHub.
 
 Resources:
   PipelineArtifactBucket:
@@ -25,7 +25,7 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  # --- 1. IAM Roles ---
+  # --- IAM Roles ---
   EC2InstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -62,15 +62,7 @@ Resources:
             Version: 2012-10-17
             Statement:
               - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - s3:PutObject
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                  - s3:GetBucketAcl
-                  - s3:GetBucketLocation
+                Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents', 's3:PutObject', 's3:GetObject', 's3:GetObjectVersion', 's3:GetBucketAcl', 's3:GetBucketLocation']
                 Resource: "*"
 
   CodePipelineServiceRole:
@@ -85,22 +77,10 @@ Resources:
             Version: 2012-10-17
             Statement:
               - Effect: Allow
-                Action:
-                  - s3:*
-                  - codebuild:StartBuild
-                  - codebuild:BatchGetBuilds
-                  - codedeploy:CreateDeployment
-                  - codedeploy:GetDeployment
-                  - codedeploy:GetApplication
-                  - codedeploy:GetApplicationRevision
-                  - codedeploy:GetDeploymentGroup
-                  - codedeploy:GetDeploymentConfig
-                  - codedeploy:RegisterApplicationRevision
-                  # Add permission to read the secret
-                  - secretsmanager:GetSecretValue
+                Action: ['s3:*', 'codebuild:StartBuild', 'codebuild:BatchGetBuilds', 'codedeploy:CreateDeployment', 'codedeploy:GetDeployment', 'codedeploy:GetApplication', 'codedeploy:GetApplicationRevision', 'codedeploy:GetDeploymentGroup', 'codedeploy:GetDeploymentConfig', 'codedeploy:RegisterApplicationRevision', 'codestar-connections:UseConnection']
                 Resource: "*"
 
-  # --- 2. Infrastructure ---
+  # --- Infrastructure ---
   WebServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -135,7 +115,7 @@ Resources:
           systemctl start codedeploy-agent
           systemctl enable codedeploy-agent
 
-  # --- 3. CodeDeploy Application ---
+  # --- CodeDeploy Application ---
   CodeDeployApp:
     Type: AWS::CodeDeploy::Application
     Properties:
@@ -159,7 +139,7 @@ Resources:
         Enabled: true
         Events: [DEPLOYMENT_FAILURE]
 
-  # --- 4. CodeBuild Project ---
+  # --- CodeBuild Project ---
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -174,7 +154,7 @@ Resources:
         Type: CODEPIPELINE
         BuildSpec: buildspec.yml
 
-  # --- 5. The Pipeline Itself ---
+  # --- The Pipeline Itself ---
   ThePipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -184,19 +164,14 @@ Resources:
         Type: S3
         Location: !Ref PipelineArtifactBucket
       Stages:
-        # --- UPDATED: Source stage is now GitHub v1 with Polling ---
         - Name: Source
           Actions:
             - Name: GitHub_Source
-              ActionTypeId: {Category: Source, Owner: ThirdParty, Provider: GitHub, Version: '1'}
+              ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeStarSourceConnection, Version: '1'}
               Configuration:
-                Owner: !Ref GitHubUsername
-                Repo: !Ref GitHubRepoName
-                Branch: !Ref GitHubBranchName
-                # Securely fetches your PAT from Secrets Manager
-                OAuthToken: "{{resolve:secrets-manager:GitHubToken:SecretString}}"
-                # This is the key: it checks for changes instead of using a webhook
-                PollForSourceChanges: true
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Ref GitHubRepoName
+                BranchName: !Ref GitHubBranchName
               OutputArtifacts: [Name: SourceArtifact]
               RunOrder: 1
         - Name: Build
