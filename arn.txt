@@ -1,1 +1,3 @@
 Srijato-05/AWS-Cloud-DevOps-CI-CD
+
+aws cloudformation create-stack --stack-name "Curator-Pipeline-Stack" --template-body file://cloudformation_template.yml --parameters ParameterKey=GitHubUsername,ParameterValue=Srijato-05 ParameterKey=GitHubRepoName,ParameterValue=AWS-Cloud-DevOps-CI-CD --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
