@@ -23,7 +23,7 @@ graph LR
         CodeDeploy -- "Sends instructions" --> Agent[CodeDeploy Agent]
         Agent -- "Executes hooks on" --> EC2[EC2 Instance <br/> Apache Server]
     end
-mermaid```
+
 ---
 
 ### Explanation
