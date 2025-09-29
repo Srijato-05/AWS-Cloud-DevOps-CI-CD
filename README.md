@@ -22,9 +22,9 @@ graph LR
         S3 -- "Deploy Stage" --> CodeDeploy[AWS CodeDeploy]
         CodeDeploy -- "Sends instructions" --> Agent[CodeDeploy Agent]
         Agent -- "Executes hooks on" --> EC2[EC2 Instance <br/> Apache Server]
-    end
+end
 
----
+
 
 ### Explanation
 
