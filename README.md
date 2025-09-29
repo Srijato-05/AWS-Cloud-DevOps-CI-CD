@@ -24,6 +24,7 @@ graph LR
         Agent -- "Executes hooks on" --> EC2[EC2 Instance <br/> Apache Server]
     end
 
+
 ### Explanation
 
 * A **Developer** pushes code changes to a **GitHub Repo**.
