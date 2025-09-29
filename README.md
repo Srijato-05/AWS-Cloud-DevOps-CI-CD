@@ -8,34 +8,6 @@ The primary goal is to establish a GitOps workflow where a `git push` to the mai
 
 ---
 
-## Architecture Overview
-
-This diagram illustrates the end-to-end continuous integration and deployment pipeline.
-
-```mermaid
-graph LR
-    subgraph "CI/CD Workflow"
-        Developer -- "git push" --> GitHub[GitHub Repo]
-        GitHub --> CodePipeline[AWS CodePipeline]
-        CodePipeline -- "Source Stage" --> CodeBuild[AWS CodeBuild]
-        CodeBuild -- "Build Stage" --> S3[(Artifact Store)]
-        S3 -- "Deploy Stage" --> CodeDeploy[AWS CodeDeploy]
-        CodeDeploy -- "Sends instructions" --> Agent[CodeDeploy Agent]
-        Agent -- "Executes hooks on" --> EC2[EC2 Instance <br/> Apache Server]
-end
-
-
-
-### Explanation
-
-* A **Developer** pushes code changes to a **GitHub Repo**.
-* The push triggers **AWS CodePipeline**, which pulls the source code.
-* **AWS CodeBuild** takes the source, prepares a build artifact as defined in `buildspec.yml`, and stores it in an S3 bucket.
-* **AWS CodeDeploy** picks up the artifact from S3 and initiates a deployment to the target EC2 instance(s).
-* The **CodeDeploy Agent** running on the EC2 Instance receives the deployment instructions and manages the process locally by executing the lifecycle hook scripts (`stop_server.sh`, `start_server.sh`, etc.) defined in `appspec.yml`.
-
----
-
 ## Core Configuration Files
 
 The behavior of the pipeline and infrastructure is defined by several key YAML files.
