@@ -1,102 +1,52 @@
-# Automated CI/CD Pipeline for a Static Website on AWS
+# The Curator's Compendium - Website
 
-![GitHub](https://img.shields.io/github/license/srijato-05/AWS-Cloud-DevOps-CI-CD) ![Build](https://img.shields.io/badge/Build-Passing-brightgreen) ![Deployment](https://img.shields.io/badge/Deployment-EC2-orange)
+This document provides a comprehensive overview of "The Curator's Compendium," a static website designed as a personal archive of foundational and influential media.
 
-This repository contains the complete Infrastructure as Code (IaC) and application source for deploying a static website, "The Curator's Compendium," to an Amazon EC2 instance using a fully automated CI/CD pipeline. The entire infrastructure is provisioned via **AWS CloudFormation**, and the pipeline is orchestrated by **AWS CodePipeline**, integrating with **AWS CodeBuild** and **AWS CodeDeploy**.
+## Overview
 
-The primary goal is to establish a GitOps workflow where a `git push` to the main branch automatically triggers the deployment of the latest version of the website with no manual intervention.
+"The Curator's Compendium" is a non-commercial, personal tribute to influential video games, literature, series, movies, and characters. It serves as a living document to catalog works that have shaped the author's perspective or defined genres. The website explicitly states it is not a collection of reviews but a tribute to the creators and their worlds. The last update to the site was on September 26, 2025.
 
----
+## Key Features
 
-## Architecture Overview
+* **Side Navigation**: A fixed vertical navigation bar provides quick access to different media categories using icons. Categories include Home, Video Games, Literature, Series & Movies, and Characters.
+* **Hero Section**: The homepage features a prominent hero section that introduces the website's purpose and welcomes visitors to the collection.
+* **Artistic Grid Layout**: Each category displays its items in an artistic and responsive grid. The grid uses a mix of standard, tall, and wide cards to create a visually engaging layout.
+* **Interactive Cards**: On hover, each item card displays a "zoom in" effect on its image, while the title fades out to reveal a detailed description of the work.
+* **Custom Typography**: The site uses 'Cormorant Garamond' for headings and 'Inter' for body text, sourced from Google Fonts, to create a sophisticated and readable aesthetic.
+* **Animated Background**: The website features a subtle, animated "nebula" background created with layered radial gradients that shift over time.
 
-The pipeline is designed for efficiency and automation, following a standard three-stage workflow.
+## Content Highlights
 
-1.  **Source Stage**: An **AWS CodeStar Connection** securely links AWS CodePipeline to a designated GitHub repository and branch. A `git push` event initiates the pipeline, which pulls the source code into an S3 artifact store.
-2.  **Build Stage**: **AWS CodeBuild** is triggered, using an Amazon Linux 2 container environment. It executes the commands defined in `buildspec.yml`, which involves setting script permissions and packaging all repository files into a build artifact.
-3.  **Deploy Stage**: **AWS CodeDeploy** receives the build artifact and manages the deployment to a group of EC2 instances tagged with `App: CuratorCompendium`. The CodeDeploy agent on the instance follows the instructions in `appspec.yml` to execute a series of lifecycle hooks for a safe, in-place deployment.
+* **Video Games**: This section includes titles like *Elden Ring*, *Bloodborne*, *Sekiro*, *Slay the Princess*, *Horizon Zero Dawn*, and *Hollow Knight*.
+* **Literature**: Features foundational works such as *Lord of the Rings*, the *Cradle Series*, the *Harry Potter Series*, *Sherlock Holmes*, *The Hunger Games*, and the *Percy Jackson* series.
+* **Web Series & Movies**: This category highlights productions like *Arcane*, *The Blacklist*, *Castlevania*, *Loki*, *V for Vendetta*, and *Chernobyl*.
+* **Characters**: Showcases iconic characters, including The Endless from *Sandman*, Doctor Doom, Lucifer Morningstar, John Constantine, Ghost Rider, Etrigan the Demon, and V from *V for Vendetta*.
 
-```mermaid
-graph LR
-    subgraph "CI/CD Workflow"
-        Developer -- "git push" --> GitHub[GitHub Repo]
-        GitHub --> CodePipeline[AWS CodePipeline]
-        CodePipeline -- "Source Stage" --> CodeBuild[AWS CodeBuild]
-        CodeBuild -- "Build Stage" --> S3[(Artifact Store)]
-        S3 -- "Deploy Stage" --> CodeDeploy[AWS CodeDeploy]
-        CodeDeploy -- "Sends instructions" --> Agent[CodeDeploy Agent]
-        Agent -- "Executes hooks on" --> EC2[EC2 Instance <br/> Apache Server]
-    end
+## Technical Implementation
 
----
+* **Frontend**: The website is built with standard HTML5 and CSS3.
+* **External Libraries**: It utilizes Font Awesome for iconography.
+* **Styling**: The CSS is structured with variables for colors and fonts, and it includes responsive design adjustments for tablet and mobile devices. On smaller screens (max-width: 768px), the side navigation is hidden, and the multi-column grid collapses into a single column.
 
-## Core Configuration Files
+## Deployment & Automation (CI/CD)
 
-The behavior of the pipeline and infrastructure is defined by several key YAML files.
+The website is deployed and maintained using a fully automated CI/CD pipeline on AWS, defined by several key configuration files.
 
-* ### `cloudformation_template.yml`
-    This is the master template that provisions all AWS resources. It creates the EC2 server, all required IAM roles, the S3 artifact bucket, security groups, and the full CodePipeline with its constituent stages.
+### Pipeline Infrastructure
 
-* ### `appspec.yml`
-    The Application Specification File dictates the deployment logic for the CodeDeploy agent on the EC2 instance.
-    * **`files`**: Maps source files (`index.html`, `style.css`) and the `images` directory to the Apache web root `/var/www/html`.
-    * **`hooks`**: Defines the sequence of scripts to be executed at specific points in the deployment lifecycle.
+* **Orchestration**: AWS CodePipeline manages the workflow from source to deployment.
+* **Build Process**: AWS CodeBuild is used to prepare the artifacts for deployment. The `buildspec.yml` file instructs the build process to make all scripts executable and then package all source files into an artifact.
+* **Deployment Target**: The infrastructure is provisioned by AWS CloudFormation, deploying the website to an EC2 instance running Ubuntu 22.04 with an Apache2 web server.
+* **Deployment Management**: AWS CodeDeploy handles the application deployment on the EC2 instance, managed by the `appspec.yml` file.
 
-* ### `buildspec.yml`
-    The Build Specification File provides instructions to AWS CodeBuild.
-    * **`install` phase**: Sets execute permissions on all deployment hook scripts.
-    * **`build` phase**: As this is a static site, no compilation is needed. This phase simply prepares the files for artifacting.
-    * **`artifacts`**: Specifies that all files (`**/*`) from the source should be included in the output artifact.
+### `appspec.yml` Configuration
 
----
+* **File Destination**: The `appspec.yml` file specifies that `index.html`, `style.css`, and the `/images` directory are to be placed in the `/var/www/html` directory on the server.
 
-## Deployment Lifecycle Hooks
+### Deployment Lifecycle Hooks
 
-CodeDeploy ensures a robust deployment process by executing a series of scripts defined in `appspec.yml`. This sequence provides for a clean installation and service validation.
-
-1.  **`ApplicationStop`**: The `stop_server.sh` script is executed to gracefully stop the `apache2` service.
-2.  **`BeforeInstall`**: The `before_install.sh` script runs, which completely clears the contents of the `/var/www/html` directory to prevent stale files.
-3.  **`Install`**: The CodeDeploy agent copies the new application files from the artifact to `/var/www/html`.
-4.  **`ApplicationStart`**: The `start_server.sh` script starts the `apache2` service.
-5.  **`ValidateService`**: The `validate_service.sh` script performs a health check by running `curl -f http://localhost/`. The `-f` flag ensures that `curl` will exit with an error code if it receives an HTTP failure (like 4xx or 5xx), which signals a failed deployment to CodeDeploy, automatically triggering a rollback.
-
----
-
-## Prerequisites
-
-To deploy this project, you must have the following:
-* An **AWS Account** with sufficient permissions to create IAM roles and the other resources defined in the template.
-* A **GitHub Account** and a repository containing the code from this project.
-* An **AWS CodeStar Connection** to your GitHub account configured in the same AWS region as your deployment. This is a one-time setup that authorizes AWS to access your repositories.
-
----
-
-## Step-by-Step Deployment Guide
-
-### 1. Configure the CodeStar Connection
-1.  Navigate to the **AWS Developer Tools** console -> **Settings** -> **Connections**.
-2.  Create a new connection, select **GitHub**, and authorize it with your GitHub account.
-3.  Once the connection status is **Available**, copy its **ARN**.
-
-### 2. Launch the CloudFormation Stack
-1.  Navigate to the **AWS CloudFormation** console and click **Create stack**.
-2.  Select **Upload a template file** and choose `cloudformation_template.yml`.
-3.  Enter a stack name (e.g., `Curator-Compendium-Pipeline`).
-4.  Fill in the **Parameters** section:
-    * `GitHubRepoName`: Your repository name in the format `YourUsername/YourRepoName`.
-    * `GitHubBranchName`: The branch to trigger deployments from (e.g., `main`).
-    * `CodeStarConnectionArn`: The full ARN you copied in the previous step.
-5.  Acknowledge that IAM resources will be created and launch the stack.
-
-### 3. Verify Deployment
-* The stack creation will take a few minutes. Once complete, the CodePipeline will automatically trigger its first execution.
-* Navigate to **AWS CodePipeline** to monitor the progress through the Source, Build, and Deploy stages.
-* Once the pipeline succeeds, go to the **Outputs** tab of your CloudFormation stack and find the `InstancePublicIp` value. Open this IP address in a web browser to see your deployed website.
-
----
-
-## Technical Specifications
-
-* **EC2 Instance**: The pipeline deploys a `t2.micro` instance running **Ubuntu Server 22.04 LTS** in the `ap-south-1` region. The `UserData` script handles the bootstrapping of Apache2 and the CodeDeploy agent.
-* **Security Group**: The instance is protected by a security group that allows inbound traffic on **Port 80 (HTTP)** and **Port 22 (SSH)** from any IP address (`0.0.0.0/0`).
-* **Debugging Infrastructure**: A separate template, `infrastructure-only.yml`, is provided for debugging purposes. It provisions only the EC2 instance and its roles, using an **Amazon Linux 2** AMI and `httpd` instead of Ubuntu/Apache2.
+The deployment process is managed by a series of scripts executed in a specific order to ensure a safe and reliable update:
+1.  **`ApplicationStop`**: The `stop_server.sh` script stops the Apache2 service.
+2.  **`BeforeInstall`**: The `before_install.sh` script cleans the web directory (`/var/www/html`) to ensure a fresh installation.
+3.  **`ApplicationStart`**: `start_server.sh` checks if the Apache2 service is already active and starts it if it is not.
+4.  **`ValidateService`**: `validate_service.sh` uses `curl -f http://localhost/` to test if the website is running and accessible. The `-f` flag causes it to fail on HTTP server errors, which would trigger an automatic rollback of the deployment.
